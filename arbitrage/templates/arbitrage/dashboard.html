@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoMagma - Bot d'Arbitrage</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .header h1 { color: #2c3e50; margin: 0; }
+        .update-btn { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 10px; }
+        .update-btn:hover { background: #2980b9; }
+        .opportunities { display: grid; gap: 15px; max-width: 1200px; margin: 0 auto; }
+        .opportunity { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); border-left: 5px solid #27ae60; }
+        .opportunity.high-profit { border-left-color: #e74c3c; }
+        .crypto-symbol { font-size: 24px; font-weight: bold; color: #2c3e50; margin-bottom: 10px; }
+        .profit { font-size: 20px; font-weight: bold; color: #27ae60; margin-bottom: 15px; }
+        .profit.high { color: #e74c3c; }
+        .details { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .exchange-info { padding: 10px; background: #ecf0f1; border-radius: 5px; }
+        .exchange-name { font-weight: bold; color: #34495e; }
+        .price { font-size: 18px; color: #2c3e50; margin-top: 5px; }
+        .no-opportunities { text-align: center; padding: 40px; color: #7f8c8d; }
+        .loading { text-align: center; padding: 20px; color: #3498db; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 CryptoMagma - Bot d'Arbitrage</h1>
+        <button class="update-btn" onclick="updatePrices()">Mettre à jour les prix</button>
+        <button class="update-btn" onclick="location.reload()">Actualiser</button>
+    </div>
+
+    <div id="loading" class="loading" style="display: none;">
+        Mise à jour des prix en cours...
+    </div>
+
+    <div class="opportunities" id="opportunities">
+        {% if opportunities %}
+            {% for opp in opportunities %}
+            <div class="opportunity {% if opp.profit_percentage > 3 %}high-profit{% endif %}">
+                <div class="crypto-symbol">{{ opp.crypto_pair.symbol }}/{{ opp.crypto_pair.base_currency }}</div>
+                <div class="profit {% if opp.profit_percentage > 3 %}high{% endif %}">
+                    💰 Profit potentiel: {{ opp.profit_percentage|floatformat:2 }}%
+                </div>
+                <div class="details">
+                    <div class="exchange-info">
+                        <div class="exchange-name">🛒 Acheter sur {{ opp.buy_exchange.name }}</div>
+                        <div class="price">${{ opp.buy_price|floatformat:4 }}</div>
+                    </div>
+                    <div class="exchange-info">
+                        <div class="exchange-name">💸 Vendre sur {{ opp.sell_exchange.name }}</div>
+                        <div class="price">${{ opp.sell_price|floatformat:4 }}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 15px; font-size: 14px; color: #7f8c8d;">
+                    ⏰ Détecté il y a {{ opp.created_at|timesince }}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="no-opportunities">
+                <h3>Aucune opportunité d'arbitrage détectée</h3>
+                <p>Cliquez sur "Mettre à jour les prix" pour rechercher de nouvelles opportunités.</p>
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        function updatePrices() {
+            document.getElementById('loading').style.display = 'block';
+            
+            fetch('/update-prices/')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('loading').style.display = 'none';
+                    if (data.status === 'success') {
+                        location.reload();
+                    } else {
+                        alert('Erreur: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('loading').style.display = 'none';
+                    alert('Erreur de connexion');
+                });
+        }
+
+        // Auto-refresh toutes les 5 minutes
+        setInterval(() => {
+            updatePrices();
+        }, 300000);
+    </script>
+</body>
+</html>
