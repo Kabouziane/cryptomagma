@@ -1,5 +1,4 @@
 import requests
-import random
 from decimal import Decimal
 from django.utils import timezone
 from .models import Exchange, CryptoPair, Price, ArbitrageOpportunity
@@ -19,12 +18,12 @@ class PriceService:
     
     @staticmethod
     def fetch_coinbase_price(symbol):
-        """Récupère le prix depuis Coinbase"""
+        """Récupère le prix depuis Coinbase Pro"""
         try:
-            url = f"https://api.coinbase.com/v2/exchange-rates?currency={symbol}"
+            url = f"https://api.exchange.coinbase.com/products/{symbol}-USD/ticker"
             response = requests.get(url, timeout=10)
             data = response.json()
-            return Decimal(data['data']['rates']['USD'])
+            return Decimal(data['price'])
         except:
             return None
     
@@ -65,24 +64,26 @@ class PriceService:
             return None
     
     @staticmethod
-    def generate_mock_price(base_price, exchange_name):
-        """Génère des prix simulés avec variations pour créer des opportunités"""
-        if not base_price:
+    def fetch_huobi_price(symbol):
+        """Récupère le prix depuis Huobi"""
+        try:
+            url = f"https://api.huobi.pro/market/detail/merged?symbol={symbol.lower()}usdt"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            return Decimal(str(data['tick']['close']))
+        except:
             return None
-        
-        # Variations par exchange pour créer des opportunités
-        variations = {
-            'Binance': random.uniform(-0.02, 0.02),
-            'Coinbase': random.uniform(-0.03, 0.03), 
-            'Kraken': random.uniform(-0.04, 0.04),
-            'KuCoin': random.uniform(-0.05, 0.05),
-            'Gate.io': random.uniform(-0.06, 0.06),
-            'Huobi': random.uniform(-0.04, 0.04),
-            'OKX': random.uniform(-0.03, 0.03)
-        }
-        
-        variation = variations.get(exchange_name, 0)
-        return base_price * (Decimal('1') + Decimal(str(variation)))
+    
+    @staticmethod
+    def fetch_okx_price(symbol):
+        """Récupère le prix depuis OKX"""
+        try:
+            url = f"https://www.okx.com/api/v5/market/ticker?instId={symbol}-USDT"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            return Decimal(data['data'][0]['last'])
+        except:
+            return None
     
     @classmethod
     def update_all_prices(cls):
@@ -93,8 +94,8 @@ class PriceService:
             'Kraken': cls.fetch_kraken_price,
             'KuCoin': cls.fetch_kucoin_price,
             'Gate.io': cls.fetch_gate_price,
-            'Huobi': None,  # Mock seulement
-            'OKX': None     # Mock seulement
+            'Huobi': cls.fetch_huobi_price,
+            'OKX': cls.fetch_okx_price
         }
         
         # Créer les exchanges
@@ -104,24 +105,17 @@ class PriceService:
                 defaults={'api_url': f'https://api.{exchange_name.lower()}.com'}
             )
         
-        # Plus de cryptos
-        crypto_symbols = ['BTC', 'ETH', 'ADA', 'DOT', 'SOL', 'MATIC', 'AVAX', 'LINK', 'UNI', 'ATOM']
+        # Cryptos les plus liquides
+        crypto_symbols = ['BTC', 'ETH', 'ADA', 'SOL', 'MATIC']
         for symbol in crypto_symbols:
             CryptoPair.objects.get_or_create(symbol=symbol)
         
-        # Récupérer les prix
-        for crypto_pair in CryptoPair.objects.all():
-            base_price = cls.fetch_binance_price(crypto_pair.symbol)  # Prix de référence
+        # Récupérer les prix réels
+        for exchange_name, fetch_method in exchanges_methods.items():
+            exchange = Exchange.objects.get(name=exchange_name)
             
-            for exchange_name, fetch_method in exchanges_methods.items():
-                exchange = Exchange.objects.get(name=exchange_name)
-                
-                if fetch_method:
-                    price = fetch_method(crypto_pair.symbol)
-                else:
-                    # Prix simulé pour créer des opportunités
-                    price = cls.generate_mock_price(base_price, exchange_name)
-                
+            for crypto_pair in CryptoPair.objects.all():
+                price = fetch_method(crypto_pair.symbol)
                 if price:
                     Price.objects.create(
                         exchange=exchange,
@@ -132,7 +126,7 @@ class PriceService:
 class ArbitrageService:
     
     @staticmethod
-    def find_opportunities(min_profit_percentage=4.0):
+    def find_opportunities(min_profit_percentage=1.0):
         """Trouve les opportunités d'arbitrage"""
         # Supprimer les anciennes opportunités
         ArbitrageOpportunity.objects.all().delete()
